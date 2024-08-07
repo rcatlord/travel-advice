@@ -79,4 +79,4 @@ map <- leaflet(world,
     )) |> 
   setMapWidgetStyle(list(background = "white"))
 
-map
+saveWidget(map, "index.html", title = "Latest FCDO travel advice")
