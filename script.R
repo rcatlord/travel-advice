@@ -19,13 +19,14 @@ read_updated <- ~{
     html_text2()
 }
 
-status <- sf %>%
+status <- sf |> 
   st_drop_geometry() |>
   mutate(status = map(pull(sf, url), read_status)) |>
-  unnest(status) %>% 
-  select(name, status)
+  unnest(status) |> 
+  distinct(name, .keep_all = TRUE) |> 
+  select(name, status) 
 
-updated <- sf %>%
+updated <- sf  |> 
   st_drop_geometry() |>
   mutate(updated = map(pull(sf, url), read_updated)) |>
   unnest(updated) |>
@@ -34,16 +35,23 @@ updated <- sf %>%
 
 world <- left_join(sf, status, by = "name") |>
   left_join(updated, by = "name") |>
-  mutate(status = case_when(
-    str_detect(status, "essential") ~ "Advise against all but essential travel",
-    is.na(status) ~ "Check travel advice before travelling",
-    TRUE ~ "Advise against all travel"),
-    status = as_factor(status)
-  )
+  mutate(
+    status = 
+      case_when(
+        str_detect(status, "against all travel") & str_detect(status, "parts") ~ "Advise against all travel to parts of the country",
+        str_detect(status, "against all travel") & !str_detect(status, "parts") ~ "Advise against all travel",
+        str_detect(status, "essential") & str_detect(status, "parts") ~ "Advise against all but essential travel to parts of the country",
+        str_detect(status, "essential") & !str_detect(status, "parts") ~ "Advise against all but essential travel",
+        TRUE ~ "Check travel advice before travelling")
+    )
 
-factpal <- colorFactor(palette = c("#E94F35","#FCB700","#C5D54E"), 
+levels(as_factor(world$status))
+
+factpal <- colorFactor(palette = c("#e31a1c","#fb9a99","#ff7f00","#fdbf6f","#33a02c"), 
                        levels = c("Advise against all travel",
+                                  "Advise against all travel to parts of the country",
                                   "Advise against all but essential travel",
+                                  "Advise against all but essential travel to parts of the country",
                                   "Check travel advice before travelling"))
 
 map <- leaflet(world,
@@ -65,9 +73,11 @@ map <- leaflet(world,
               ),
               labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"), textsize = "13px", direction = "auto"),
               highlightOptions = highlightOptions(color = "#000000", weight = 2, bringToFront = TRUE)) |>
-  addLegend(position = "bottomleft", colors = c("#E94F35","#FCB700","#C5D54E"),
+  addLegend(position = "bottomleft", colors = c("#e31a1c","#fb9a99","#ff7f00","#fdbf6f","#33a02c"),
             labels = c("Advise against all travel",
+                       "Advise against all travel to parts of the country",
                        "Advise against all but essential travel",
+                       "Advise against all but essential travel to parts of the country",
                        "Check travel advice before travelling"), opacity = 0.8) |>
   addControl(paste0("<h2>Latest FCDO travel advice</h2>"), position = "topright", className = "map-title") |> 
   addGraticule(style = list(color = "#999", weight = 0.5, opacity = 1, fill = NA)) |> 
