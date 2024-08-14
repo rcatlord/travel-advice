@@ -45,8 +45,6 @@ world <- left_join(sf, status, by = "name") |>
         TRUE ~ "Check travel advice before travelling")
     )
 
-levels(as_factor(world$status))
-
 factpal <- colorFactor(palette = c("#e31a1c","#fb9a99","#ff7f00","#fdbf6f","#33a02c"), 
                        levels = c("Advise against all travel",
                                   "Advise against all travel to parts of the country",
