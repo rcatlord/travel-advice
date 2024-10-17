@@ -24,7 +24,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Scrape data
-        run: Rscript -e 'source("script.R")'
+        run: Rscript -e 'source("travel-advice.qmd")'
 
       - name: Commit results
         run: |
