@@ -1,0 +1,155 @@
+---
+title: "Travel advice"
+format:
+   html: 
+    output-file: "index"
+    output-ext:  "html"
+    self-contained: true
+    page-layout: full
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+library(tidyverse) ; library(sf) ; library(rvest) ; library(leaflet) ; library(leaflet.extras) ; library(htmlwidgets) ; library(gt)
+
+sf <- read_sf("data/world.geojson") |> 
+  filter(!is.na(url))
+
+# one line travel advice
+read_status <- ~{
+  message(.)
+  read_html(.) |>
+    html_nodes("strong") |>
+    html_text2() 
+}
+
+# date updated
+read_updated <- ~{
+  message(.)
+  read_html(.) |>
+    html_nodes(".gem-c-metadata__definition") |>
+    html_text2()
+}
+
+status <- sf |> 
+  st_drop_geometry() |>
+  mutate(status = map(pull(sf, url), read_status)) |>
+  unnest(status) |> 
+  distinct(name, .keep_all = TRUE) |> 
+  select(name, status) 
+
+updated <- sf  |> 
+  st_drop_geometry() |>
+  mutate(updated = map(pull(sf, url), read_updated)) |>
+  unnest(updated) |>
+  filter(row_number() %% 3 == 2) |> 
+  select(name, updated)
+
+world <- left_join(sf, status, by = "name") |>
+  left_join(updated, by = "name") |>
+  mutate(
+    status = 
+      case_when(
+        str_detect(status, "against all travel") & str_detect(status, "parts") ~ "Advise against all travel to parts",
+        str_detect(status, "against all travel") & !str_detect(status, "parts") ~ "Advise against all travel",
+        str_detect(status, "essential") & str_detect(status, "parts") ~ "Advise against all but essential travel to parts",
+        str_detect(status, "essential") & !str_detect(status, "parts") ~ "Advise against all but essential travel",
+        TRUE ~ "Check travel advice before travelling")
+    ) |> 
+  filter(status != "Check travel advice before travelling")
+
+latest <- world |> 
+  st_drop_geometry() |> 
+  mutate(date = as.Date(updated, format = "%d %B %Y")) |> 
+  # last 3 days
+  filter(date >= max(date)-days(3)) |> 
+  select(name, status, updated) |> 
+  distinct(name, updated, .keep_all = TRUE) |> 
+  arrange(desc(updated))
+
+date_updated <- max(latest$updated)
+
+factpal <- colorFactor(palette = c("#e31a1c","#fb9a99","#ff7f00","#fdbf6f"), 
+                       levels = c("Advise against all travel",
+                                  "Advise against all travel to parts",
+                                  "Advise against all but essential travel",
+                                  "Advise against all but essential travel to parts"))
+
+map <- leaflet(world) |>
+  setView(0,0,1) |> 
+  addPolygons(data = sf, color = "#969696", weight = 1, fill = F) |> 
+  addPolygons(weight = 1, color = "#969696", opacity = 1, fillColor = ~factpal(world$status), fillOpacity = 0.8, popup = paste0(
+    "<strong>", world$name, "</strong>",
+    "<br>",
+    "<a style='text-decoration: none;', href='", world$url,"' target='_blank'>FCDO travel advice</a>",
+    "<br>",
+    "<em>Updated: ", world$updated, "</em>"),
+    labelOptions = labelOptions(style = list("font-weight" = "normal", padding = "3px 8px"), textsize = "13px", direction = "auto"),
+    highlightOptions = highlightOptions(color = "#000000", weight = 2, bringToFront = TRUE)) |>
+  addLegend(position = "bottomright", colors = c("#e31a1c","#fb9a99","#ff7f00","#fdbf6f"),
+            labels = c("Advise against all travel",
+                       "Advise against all travel to parts",
+                       "Advise against all but essential travel",
+                       "Advise against all but essential travel to parts"), opacity = 0.8) |> 
+  setMapWidgetStyle(list(background = "white"))
+
+tbl <- latest |> 
+  select(name, status, updated) |> 
+  gt() |> 
+  cols_label(
+    name = "Country",
+    status = "Status",
+    updated = "Updated",
+  ) |> 
+  tab_style(
+    style = cell_text(align = "left", weight = "bold"),
+    locations = cells_column_labels()
+  ) |> 
+  tab_style(
+    style = list(cell_fill(color = "#e31a1c"), cell_text(color = "#FFFFFF")),
+    locations = cells_body(columns = status, rows = status == "Advise against all travel")
+  ) |> 
+  tab_style(
+    style = list(cell_fill(color = "#fb9a99"), cell_text(color = "#FFFFFF")),
+    locations = cells_body(columns = status, rows = status == "Advise against all travel to parts")
+  ) |> 
+  tab_style(
+    style = list(cell_fill(color = "#ff7f00"), cell_text(color = "#FFFFFF")),
+    locations = cells_body(columns = status, rows = status == "Advise against all but essential travel")
+  ) |>
+  tab_style(
+    style = list(cell_fill(color = "#fdbf6f"), cell_text(color = "#FFFFFF")),
+    locations = cells_body(columns = status, rows = status == "Advise against all but essential travel to parts")
+  ) |>
+  tab_header(
+    title = md("*Most recent updates*")
+  ) |> 
+  opt_align_table_header(align = "left") |> 
+  opt_row_striping(row_striping = FALSE) |> 
+  tab_source_note(
+    source_note = md("*Source*: UK Foreign, Commonwealth & Development Office")
+  ) |> 
+  tab_options(
+    table.width = pct(100),
+    heading.title.font.size = px(18),
+    table.align = "left",
+    data_row.padding = px(3),
+    table.border.top.color = "transparent",
+    table.border.bottom.color = "transparent",
+    heading.border.bottom.color = "transparent",
+    column_labels.border.bottom.color = "#bdbdbd",
+    table_body.border.bottom.color = "#bdbdbd",
+    quarto.disable_processing = TRUE)
+```
+
+This is the latest travel advice from the UK's [Foreign Commonwealth and Development Office (FCDO)](https://www.gov.uk/government/organisations/foreign-commonwealth-development-office). The information was scraped on (`r date_updated`) from the FCDO's [foreign travel advice pages](https://www.gov.uk/foreign-travel-advice).
+
+```{r}
+#| layout-ncol: 2
+#| column: screen-inset-shaded
+map
+tbl
+```
