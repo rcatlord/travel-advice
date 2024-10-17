@@ -19,6 +19,8 @@ jobs:
             any::leaflet
             any::leaflet.extras
             any::htmlwidgets
+            any::gt
+            any::gt
 
       - name: Check out repository
         uses: actions/checkout@v3
