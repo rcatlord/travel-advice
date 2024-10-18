@@ -31,6 +31,8 @@ jobs:
       - name: Scrape data
         run: Rscript -e 'source("travel-advice.qmd")'
 
+      - run: quarto render --to html
+
       - name: Commit results
         run: |
           git config --local user.email "actions@github.com"
