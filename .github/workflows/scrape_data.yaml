@@ -31,7 +31,12 @@ jobs:
       - name: Scrape data
         run: Rscript -e 'source("travel-advice.qmd")'
 
-      - run: quarto render --to html
+      - name: Render and Publish
+        uses: quarto-dev/quarto-actions/publish@v2
+        with:
+          target: gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Commit results
         run: |
